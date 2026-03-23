@@ -4,14 +4,14 @@ import nodemailer from "nodemailer";
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || "smtp.titan.email",
   port: parseInt(process.env.SMTP_PORT) || 587,
-  secure: process.env.SMTP_SECURE === "true", // false by default (use TLS on 587)
+  secure: process.env.SMTP_SECURE, // false by default (use TLS on 587)
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
   // Add timeout settings to prevent hanging
-  connectionTimeout: 5000, // 5 seconds
-  socketTimeout: 5000, // 5 seconds
+  connectionTimeout: 10000, // 5 seconds
+  socketTimeout: 10000, // 5 seconds
   tls: {
     rejectUnauthorized: false, // Allow self-signed certs on some servers
   },
