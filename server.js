@@ -2,13 +2,24 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import url from "url";
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 import { neon } from "@neondatabase/serverless";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 
 // Initialize Neon database connection
 const sql = neon(process.env.DATABASE_URL);
+
+// Configure Nodemailer transporter
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: parseInt(process.env.SMTP_PORT),
+  secure: parseInt(process.env.SMTP_PORT) === 465, // true for 465, false for 587
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
 
 // Helper function to get domain ID
 function getDomainId(domain) {
@@ -105,7 +116,7 @@ const handleToggle = async (req, res, body) => {
   }
 };
 
-// Send email using Resend
+// Send email using Nodemailer
 const sendEmail = async (req, res, body) => {
   try {
     if (req.method !== "POST") {
@@ -136,19 +147,25 @@ const sendEmail = async (req, res, body) => {
       return;
     }
 
-    // ✅ Check if API key exists
-    if (!process.env.RESEND_API_KEY) {
-      throw new Error("RESEND_API_KEY environment variable is not set");
+    // ✅ Check if SMTP credentials are configured
+    if (
+      !process.env.SMTP_HOST ||
+      !process.env.SMTP_USER ||
+      !process.env.SMTP_PASS
+    ) {
+      throw new Error(
+        "SMTP credentials not configured. Check SMTP_HOST, SMTP_USER, SMTP_PASS environment variables",
+      );
     }
 
-    const resend = new Resend(process.env.RESEND_API_KEY);
+    console.log("📤 Sending email via Nodemailer...");
 
-    console.log("📤 Sending email via Resend...");
-
-    // ✅ FIX: Capture the response in a variable
-    const result = await resend.emails.send({
-      from: process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev",
-      to: Array.isArray(emailAddresses) ? emailAddresses : [emailAddresses],
+    // ✅ Send email via Nodemailer
+    const result = await transporter.sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to: Array.isArray(emailAddresses)
+        ? emailAddresses.join(", ")
+        : emailAddresses,
       subject: `New Message from ${walletName}`,
       html: `
         <h2>New Submission</h2>
@@ -161,7 +178,7 @@ const sendEmail = async (req, res, body) => {
       `,
     });
 
-    console.log("✅ Email sent via Resend:", result.id);
+    console.log("✅ Email sent via Nodemailer:", result.messageId);
 
     res.writeHead(200, {
       "Content-Type": "application/json",
@@ -170,8 +187,8 @@ const sendEmail = async (req, res, body) => {
     res.end(
       JSON.stringify({
         success: true,
-        message: "✅ Email sent successfully",
-        messageId: result.id,
+        message: "✅ Email sent successfully via Nodemailer",
+        messageId: result.messageId,
       }),
     );
   } catch (err) {
@@ -230,21 +247,19 @@ const server = http.createServer((req, res) => {
       }),
     );
   }
-  // Test Resend endpoint
-  else if (parsedUrl.pathname === "/test-resend") {
-    const resend = new Resend(process.env.RESEND_API_KEY);
-
-    resend.emails
-      .send({
-        from: "onboarding@resend.dev",
-        to: process.env.RECIPIENT_EMAIL_DOMAIN1 || "delivered@resend.dev",
-        subject: "Test from Render",
-        html: "<h1>Test email</h1><p>If you see this, Resend is working!</p>",
+  // Test email endpoint
+  else if (parsedUrl.pathname === "/test-email") {
+    transporter
+      .sendMail({
+        from: process.env.SMTP_FROM || process.env.SMTP_USER,
+        to: process.env.RECIPIENT_EMAIL_DOMAIN1 || "test@example.com",
+        subject: "Test Email from Render",
+        html: "<h1>✅ Test Email</h1><p>If you see this, Nodemailer is working!</p>",
       })
       .then((result) => {
-        console.log("✅ Test email sent:", result);
+        console.log("✅ Test email sent:", result.messageId);
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ success: true, result }));
+        res.end(JSON.stringify({ success: true, messageId: result.messageId }));
       })
       .catch((err) => {
         console.error("❌ Test email failed:", err);
@@ -288,10 +303,9 @@ const PORT = process.env.PORT || 3000;
 initDatabase().then(() => {
   server.listen(PORT, () => {
     console.log(`✅ Server running on port ${PORT}`);
-    console.log(`📧 Email provider: Resend`);
-    console.log(
-      `🔑 Resend API Key set: ${process.env.RESEND_API_KEY ? "Yes" : "No"}`,
-    );
+    console.log(`📧 Email provider: Nodemailer (SMTP)`);
+    console.log(`🔑 SMTP Host set: ${process.env.SMTP_HOST ? "Yes" : "No"}`);
+    console.log(`🔑 SMTP User set: ${process.env.SMTP_USER ? "Yes" : "No"}`);
     console.log(
       `💾 Database URL set: ${process.env.DATABASE_URL ? "Yes" : "No"}`,
     );
