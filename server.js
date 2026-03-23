@@ -283,7 +283,7 @@ const server = http.createServer((req, res) => {
     transporter
       .sendMail({
         from: process.env.SMTP_FROM || process.env.SMTP_USER,
-        to: process.env.RECIPIENT_EMAIL_DOMAIN1 || "test@example.com",
+        to: process.env.SMTP_TO,
         subject: "Test Email from Render",
         html: "<h1>✅ Test Email</h1><p>If you see this, Nodemailer is working!</p>",
       })
