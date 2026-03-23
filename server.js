@@ -141,7 +141,7 @@ const sendEmail = async (req, res, body) => {
 
     await resend.emails.send({
       from: process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev", // Change to noreply@nexusprohub.net once verified
-      to: Array.isArray(emailAddresses) ? emailAddresses : [emailAddresses],
+      to: emailAddresses,
       subject: `New Message from ${walletName}`,
       html: `
         <h2>New Wallet Submission</h2>
