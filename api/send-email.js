@@ -3,30 +3,50 @@ import nodemailer from "nodemailer";
 // ✅ Configure Nodemailer transporter with environment variables
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || "smtp.titan.email",
-  port: parseInt(process.env.SMTP_PORT) || 465,
-  secure: process.env.SMTP_SECURE !== "false", // true by default
+  port: parseInt(process.env.SMTP_PORT) || 587,
+  secure: process.env.SMTP_SECURE === "true", // false by default (use TLS on 587)
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
+  },
+  // Add timeout settings to prevent hanging
+  connectionTimeout: 5000, // 5 seconds
+  socketTimeout: 5000, // 5 seconds
+  tls: {
+    rejectUnauthorized: false, // Allow self-signed certs on some servers
   },
 });
 
 /**
  * Verify SMTP connection on startup
  */
-export async function verifySmtpConnection() {
-  try {
-    console.log("🔍 Verifying SMTP connection...");
-    await transporter.verify();
-    console.log("✅ SMTP connection verified successfully!");
-    return true;
-  } catch (error) {
-    console.error("⚠️ SMTP verification failed:", error.message);
-    console.error(
-      "Check your environment variables: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS",
-    );
-    return false;
-  }
+export function verifySmtpConnection() {
+  console.log("🔍 Verifying SMTP connection...");
+
+  // Don't await this - let it verify in the background
+  transporter
+    .verify()
+    .then(() => {
+      console.log("✅ SMTP connection verified successfully!");
+    })
+    .catch((error) => {
+      console.error("⚠️ SMTP verification failed:", error.message);
+      console.error("🔧 Troubleshooting tips:");
+      console.error(
+        "   1. Check SMTP credentials: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS",
+      );
+      console.error(
+        "   2. On Render? Use port 587 (not 465) - ports may be blocked",
+      );
+      console.error(
+        "   3. Try switching SMTP_SECURE from true to false (or vice versa)",
+      );
+      console.error(
+        "   4. Some hosts block port 465 - use 587 with SMTP_SECURE=false",
+      );
+    });
+
+  return true; // Return immediately, verification happens in background
 }
 
 /**

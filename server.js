@@ -266,10 +266,10 @@ async function startServer() {
     // Initialize database
     await initDatabase();
 
-    // Verify SMTP connection
-    await emailService.verifySmtpConnection();
+    // Verify SMTP connection (non-blocking - happens in background)
+    emailService.verifySmtpConnection();
 
-    // Start HTTP server
+    // Start HTTP server immediately - don't wait for SMTP verification
     server.listen(PORT, () => {
       console.log("\n╔═══════════════════════════════════════╗");
       console.log("║  🚀 SERVER STARTED SUCCESSFULLY       ║");
