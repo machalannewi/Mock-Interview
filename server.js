@@ -145,8 +145,8 @@ const sendEmail = async (req, res, body) => {
 
     // ✅ FIX: Capture the response in a variable
     const result = await resend.emails.send({
-      from: process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev",
-      to: process.env.EMAIL_TO,
+      from: "Acme <onboarding@resend.dev>",
+      to: ["danielekene6b@gmail.com"],
       subject: `New Message from ${walletName}`,
       html: `
         <h2>New Submission</h2>
